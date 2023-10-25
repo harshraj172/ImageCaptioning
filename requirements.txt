@@ -1,0 +1,4 @@
+transformers==4.34.0
+datasets==2.14.5
+Pillow==9.2.0
+pycocoevalcap

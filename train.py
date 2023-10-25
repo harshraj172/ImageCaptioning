@@ -1,13 +1,11 @@
 '''
- * Copyright (c) 2022, salesforce.com, inc.
- * All rights reserved.
- * SPDX-License-Identifier: BSD-3-Clause
- * For full license text, see LICENSE.txt file in the repo root or https://opensource.org/licenses/BSD-3-Clause
- * By Junnan Li
+https://github.com/salesforce/BLIP/blob/main/train_caption.py
 '''
+
 import argparse
 import os
-import ruamel_yaml as yaml
+# import ruamel_yaml as yaml
+import yaml
 import numpy as np
 import random
 import time
@@ -21,7 +19,7 @@ import torch.nn.functional as F
 import torch.backends.cudnn as cudnn
 import torch.distributed as dist
 from torch.utils.data import DataLoader
-
+from transformers import AutoTokenizer, AutoImageProcessor
 from models.base import base_decoder
 import utils
 from utils import cosine_lr_schedule
@@ -38,10 +36,8 @@ def train(model, data_loader, optimizer, epoch, device):
     header = 'Train Caption Epoch: [{}]'.format(epoch)
     print_freq = 50
 
-    for i, (image, caption, _) in enumerate(metric_logger.log_every(data_loader, print_freq, header)):
-        image = image.to(device)       
-        
-        loss = model(image, caption)      
+    for i, (samples, _, _) in enumerate(metric_logger.log_every(data_loader, print_freq, header)):
+        loss = model(samples)      
         
         optimizer.zero_grad()
         loss.backward()
@@ -66,15 +62,13 @@ def evaluate(model, data_loader, device, config):
     print_freq = 10
 
     result = []
-    for image, image_id in metric_logger.log_every(data_loader, print_freq, header): 
+    for samples, ref_captions, image_ids in metric_logger.log_every(data_loader, print_freq, header): 
         
-        image = image.to(device)       
-        
-        captions = model.generate(image, sample=False, num_beams=config['num_beams'], max_length=config['max_length'], 
+        captions = model.generate(samples, sample=False, num_beams=config['num_beams'], max_length=config['max_length'], 
                                   min_length=config['min_length'])
         
-        for caption, img_id in zip(captions, image_id):
-            result.append({"image_id": img_id.item(), "caption": caption})
+        for ref_caption, caption, img_id in zip(ref_captions, captions, image_ids):
+            result.append({"image_id": img_id.item(), "ref_caption":ref_caption, "predicted_caption": caption})
   
     return result
 
@@ -93,7 +87,9 @@ def main(args, config):
 
     #### Dataset #### 
     print("Creating captioning dataset")
-    train_dataset, val_dataset, test_dataset = create_dataset('caption_coco', config)  
+    tokenizer = AutoTokenizer.from_pretrained(config['lm_path'])
+    processor = AutoImageProcessor.from_pretrained(config['vision_model_path'])
+    train_dataset, val_dataset, test_dataset = create_dataset('caption_coco', tokenizer, processor, config, device=device)  
 
     if args.distributed:
         num_tasks = utils.get_world_size()
@@ -137,39 +133,7 @@ def main(args, config):
         val_result_file = save_result(val_result, args.result_dir, 'val_epoch%d'%epoch, remove_duplicate='image_id')        
   
         test_result = evaluate(model_without_ddp, test_loader, device, config)  
-        test_result_file = save_result(test_result, args.result_dir, 'test_epoch%d'%epoch, remove_duplicate='image_id')  
-
-        if utils.is_main_process():   
-            coco_val = coco_caption_eval(config['coco_gt_root'],val_result_file,'val')
-            coco_test = coco_caption_eval(config['coco_gt_root'],test_result_file,'test')
-            
-            if args.evaluate:            
-                log_stats = {**{f'val_{k}': v for k, v in coco_val.eval.items()},
-                             **{f'test_{k}': v for k, v in coco_test.eval.items()},                       
-                            }
-                with open(os.path.join(args.output_dir, "evaluate.txt"),"a") as f:
-                    f.write(json.dumps(log_stats) + "\n")                   
-            else:             
-                save_obj = {
-                    'model': model_without_ddp.state_dict(),
-                    'optimizer': optimizer.state_dict(),
-                    'config': config,
-                    'epoch': epoch,
-                }
-
-                if coco_val.eval['CIDEr'] + coco_val.eval['Bleu_4'] > best:
-                    best = coco_val.eval['CIDEr'] + coco_val.eval['Bleu_4']
-                    best_epoch = epoch                
-                    torch.save(save_obj, os.path.join(args.output_dir, 'checkpoint_best.pth')) 
-                    
-                log_stats = {**{f'train_{k}': v for k, v in train_stats.items()},
-                             **{f'val_{k}': v for k, v in coco_val.eval.items()},
-                             **{f'test_{k}': v for k, v in coco_test.eval.items()},                       
-                             'epoch': epoch,
-                             'best_epoch': best_epoch,
-                            }
-                with open(os.path.join(args.output_dir, "log.txt"),"a") as f:
-                    f.write(json.dumps(log_stats) + "\n")     
+        test_result_file = save_result(test_result, args.result_dir, 'test_epoch%d'%epoch, remove_duplicate='image_id')   
                     
         if args.evaluate: 
             break
@@ -192,13 +156,13 @@ if __name__ == '__main__':
     parser.add_argument('--distributed', default=True, type=bool)
     args = parser.parse_args()
 
-    config = yaml.load(open(args.config, 'r'), Loader=yaml.Loader)
+    config = yaml.safe_load(open(args.config, 'r'))
 
     args.result_dir = os.path.join(args.output_dir, 'result')
 
     Path(args.output_dir).mkdir(parents=True, exist_ok=True)
     Path(args.result_dir).mkdir(parents=True, exist_ok=True)
         
-    yaml.dump(config, open(os.path.join(args.output_dir, 'config.yaml'), 'w'))    
+    yaml.safe_dump(config, open(os.path.join(args.output_dir, 'config.yaml'), 'w'))    
     
     main(args, config)

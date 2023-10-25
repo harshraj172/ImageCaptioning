@@ -1,6 +1,7 @@
 import re
 import json
 import os
+import numpy as np
 
 import torch
 import torch.distributed as dist
@@ -110,3 +111,30 @@ def coco_caption_eval(coco_gt_root, results_file, split):
         print(f'{metric}: {score:.3f}')
     
     return coco_eval
+
+
+class RandomAugment(object):
+
+    def __init__(self, N=2, M=10, isPIL=False, augs=[]):
+        self.N = N
+        self.M = M
+        self.isPIL = isPIL
+        if augs:
+            self.augs = augs       
+        else:
+            self.augs = list(arg_dict.keys())
+
+    def get_random_ops(self):
+        sampled_ops = np.random.choice(self.augs, self.N)
+        return [(op, 0.5, self.M) for op in sampled_ops]
+
+    def __call__(self, img):
+        if self.isPIL:
+            img = np.array(img)            
+        ops = self.get_random_ops()
+        for name, prob, level in ops:
+            if np.random.random() > prob:
+                continue
+            args = arg_dict[name](level)
+            img = func_dict[name](img, *args) 
+        return img
