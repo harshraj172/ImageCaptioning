@@ -4,7 +4,6 @@ https://github.com/salesforce/BLIP/blob/main/train_caption.py
 
 import argparse
 import os
-# import ruamel_yaml as yaml
 import yaml
 import numpy as np
 import random
@@ -20,7 +19,7 @@ import torch.backends.cudnn as cudnn
 import torch.distributed as dist
 from torch.utils.data import DataLoader
 from transformers import AutoTokenizer, AutoImageProcessor
-from models.base import base_decoder
+from models import base_decoder, model2_decoder
 import utils
 from utils import cosine_lr_schedule
 from data import create_dataset, create_sampler, create_loader
@@ -104,7 +103,8 @@ def main(args, config):
 
     #### Model #### 
     print("Creating model")
-    model = base_decoder(pretrained=config['pretrained'], vision_model_path=config['vision_model_path'], lm_path=config['lm_path'])
+    # model = base_decoder(pretrained=config['pretrained'], vision_model_path=config['vision_model_path'], lm_path=config['lm_path'])
+    model = model2_decoder(pretrained=config['pretrained'], vision_model_path=config['vision_model_path'], lm_path=config['lm_path'])
 
     model = model.to(device)   
     
@@ -113,7 +113,8 @@ def main(args, config):
         model = torch.nn.parallel.DistributedDataParallel(model, device_ids=[args.gpu])
         model_without_ddp = model.module    
     
-    optimizer = torch.optim.AdamW(params=model.parameters(), lr=config['init_lr'], weight_decay=config['weight_decay'])
+    params_to_optimize = (p for p in list(model.proj.parameters()) if p.requires_grad)
+    optimizer = torch.optim.AdamW(params=params_to_optimize.parameters(), lr=config['init_lr'], weight_decay=config['weight_decay'])
             
     best = 0
     best_epoch = 0

@@ -1,15 +1,15 @@
 # set pretrained as a file path or an url, vision model, text model
 pretrained: ''
-vision_model_path: 'facebook/dinov2-small'
-lm_path: 't5-small'
+vision_model_path: 'facebook/dinov2-giant'
+lm_path: 't5-large'
 
 batch_size: 8
-init_lr: 0.001
+init_lr: 0.0001
 
 image_size: 384
 
 # generation configs
-max_length: 20  
+max_length: 40  
 min_length: 5
 num_beams: 3
 prompt: ''
@@ -17,4 +17,4 @@ prompt: ''
 # optimizer
 weight_decay: 0.05
 min_lr: 0
-max_epoch: 1
+max_epoch: 5

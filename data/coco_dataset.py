@@ -15,7 +15,6 @@ class CocoCaptionDataset(Dataset):
     def __init__(self, split, tokenizer, processor, 
                  device=torch.device('cuda'), sample_size=None, hf_path='HuggingFaceM4/COCO'):
         self.raw_dataset = load_dataset(hf_path, split=split)
-        sample_size=50
         if sample_size:
             random_indices = random.sample(range(len(self.raw_dataset)), sample_size)
             self.raw_dataset = self.raw_dataset.select(random_indices)
