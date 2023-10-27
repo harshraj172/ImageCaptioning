@@ -44,7 +44,7 @@ class Model2(nn.Module):
         mlp_depth = 3
         modules = [nn.Linear(self.visual_encoder.config.hidden_size, self.lm_decoder.config.hidden_size)]
         for _ in range(1, mlp_depth):
-            modules.append(SimpleResBlock(self.lm_decoder.config.hidden_size, self.lm_decoder.config.hidden_size))
+            modules.append(SimpleResBlock(self.lm_decoder.config.hidden_size))
         self.proj = nn.Sequential(*modules)
         
     def forward(self, samples):
