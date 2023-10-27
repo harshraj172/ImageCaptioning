@@ -3,13 +3,17 @@ pretrained: ''
 vision_model_path: 'facebook/dinov2-giant'
 lm_path: 't5-large'
 
-batch_size: 8
+# logging
+wandb_team: 'harsh172'
+wandb_project: 'image-captioning'
+
+batch_size: 12
 init_lr: 0.0001
 
 image_size: 384
 
 # generation configs
-max_length: 40  
+max_length: 25  
 min_length: 5
 num_beams: 3
 prompt: ''
@@ -17,4 +21,4 @@ prompt: ''
 # optimizer
 weight_decay: 0.05
 min_lr: 0
-max_epoch: 5
+max_epoch: 10

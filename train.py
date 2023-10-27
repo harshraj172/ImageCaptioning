@@ -11,6 +11,7 @@ import time
 import datetime
 import json
 from pathlib import Path
+import wandb 
 
 import torch
 import torch.nn as nn
@@ -42,9 +43,10 @@ def train(model, data_loader, optimizer, epoch, device):
         loss.backward()
         optimizer.step()    
         
+        wandb.log({'Train Loss': loss.item()})
         metric_logger.update(loss=loss.item())
         metric_logger.update(lr=optimizer.param_groups[0]["lr"])
-
+    
     # gather the stats from all processes
     metric_logger.synchronize_between_processes()
     print("Averaged stats:", metric_logger.global_avg())     
@@ -113,8 +115,8 @@ def main(args, config):
         model = torch.nn.parallel.DistributedDataParallel(model, device_ids=[args.gpu])
         model_without_ddp = model.module    
     
-    params_to_optimize = (p for p in list(model.proj.parameters()) if p.requires_grad)
-    optimizer = torch.optim.AdamW(params=params_to_optimize.parameters(), lr=config['init_lr'], weight_decay=config['weight_decay'])
+    params_to_optimize = (p for p in list(model.parameters()) if p.requires_grad)
+    optimizer = torch.optim.AdamW(params=params_to_optimize, lr=config['init_lr'], weight_decay=config['weight_decay'])
             
     best = 0
     best_epoch = 0
@@ -130,11 +132,12 @@ def main(args, config):
                 
             train_stats = train(model, train_loader, optimizer, epoch, device) 
         
-        val_result = evaluate(model_without_ddp, val_loader, device, config)  
-        val_result_file = save_result(val_result, args.result_dir, 'val_epoch%d'%epoch, remove_duplicate='image_id')        
-  
-        test_result = evaluate(model_without_ddp, test_loader, device, config)  
-        test_result_file = save_result(test_result, args.result_dir, 'test_epoch%d'%epoch, remove_duplicate='image_id')   
+        if epoch == config['max_epoch']-1:
+            val_result = evaluate(model_without_ddp, val_loader, device, config)  
+            val_result_file = save_result(val_result, args.result_dir, 'val_epoch%d'%epoch, remove_duplicate='image_id')        
+
+            test_result = evaluate(model_without_ddp, test_loader, device, config)  
+            test_result_file = save_result(test_result, args.result_dir, 'test_epoch%d'%epoch, remove_duplicate='image_id')   
                     
         if args.evaluate: 
             break
@@ -165,5 +168,6 @@ if __name__ == '__main__':
     Path(args.result_dir).mkdir(parents=True, exist_ok=True)
         
     yaml.safe_dump(config, open(os.path.join(args.output_dir, 'config.yaml'), 'w'))    
+    wandb.init(entity=config['wandb_team'], project=config['wandb_project'], config=config)
     
     main(args, config)

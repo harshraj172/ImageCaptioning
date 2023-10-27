@@ -39,6 +39,7 @@ class BaseModel(nn.Module):
         
     def forward(self, samples):
         image_embeds = self.ln_vision(self.visual_encoder(samples['pixel_values']).last_hidden_state)
+        image_embeds = F.dropout(image_embeds, p=0.1)
         image_atts = torch.ones(image_embeds.size()[:-1], dtype=torch.long).to(image_embeds.device)
         
         lm_inputs = self.proj(image_embeds)

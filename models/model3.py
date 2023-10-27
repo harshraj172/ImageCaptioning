@@ -1,15 +1,15 @@
 """
-Model with LLaVA like projection
+Model with LLaVA like projection, CausalLM-LLama/Mistral
 """
 
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from transformers import (AutoTokenizer, AutoConfig,
-                          AutoModelForSeq2SeqLM, AutoModel)
+                          AutoModelForCausalLM, AutoModel)
 from .utils import SimpleResBlock
 
-class Model2(nn.Module):
+class Model3(nn.Module):
     def __init__(self,                 
                 vision_model_path='facebook/dinov2-small',
                 lm_path='t5-small',
@@ -32,7 +32,7 @@ class Model2(nn.Module):
         self.lm_tokenizer = AutoTokenizer.from_pretrained(lm_path)
         lm_config = AutoConfig.from_pretrained(lm_path)
         lm_config.dense_act_fn = "gelu"
-        self.lm_decoder = AutoModelForSeq2SeqLM.from_pretrained(
+        self.lm_decoder = AutoModelForCausalLM.from_pretrained(
             lm_path, config=lm_config
         )
         print('FREEZING LANGUAGE DECODER')
@@ -46,6 +46,7 @@ class Model2(nn.Module):
         for _ in range(1, mlp_depth):
             modules.append(SimpleResBlock(self.lm_decoder.config.hidden_size, self.lm_decoder.config.hidden_size))
         self.proj = nn.Sequential(*modules)
+        
         
     def forward(self, samples):
         image_embeds = self.ln_vision(self.visual_encoder(samples['pixel_values']).last_hidden_state)
@@ -106,8 +107,8 @@ class Model2(nn.Module):
         return output_text
     
 
-def model2_decoder(pretrained='',**kwargs):
-    model = Model2(**kwargs)
+def model3_decoder(pretrained='',**kwargs):
+    model = Model3(**kwargs)
     if pretrained:
         model,msg = load_checkpoint(model,pretrained)
         assert(len(msg.missing_keys)==0)
