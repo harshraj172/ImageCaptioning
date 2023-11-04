@@ -1,18 +1,18 @@
 import torch
 from torch.utils.data import DataLoader
-from torchvision import transforms
-from torchvision.transforms.functional import InterpolationMode
+# from torchvision import transforms
+# from torchvision.transforms.functional import InterpolationMode
 
 from data.coco_dataset import CocoCaptionDataset
 from data.utils import RandomAugment
     
-def create_dataset(dataset, tokenizer, processor, config, 
+def create_dataset(dataset, tokenizer, processor, eval_processor, config, 
                    device=torch.device('cuda'), min_scale=0.5):
         
     if dataset=='caption_coco':
-        train_dataset = CocoCaptionDataset(split='train', tokenizer=tokenizer, processor=processor)
-        val_dataset = CocoCaptionDataset(split='validation', tokenizer=tokenizer, processor=processor)
-        test_dataset = CocoCaptionDataset(split='test', tokenizer=tokenizer, processor=processor)
+        train_dataset = CocoCaptionDataset(split='train', max_length=config['max_length'], tokenizer=tokenizer, processor=processor, eval_processor=eval_processor)
+        val_dataset = CocoCaptionDataset(split='validation', max_length=config['max_length'], tokenizer=tokenizer, processor=processor, eval_processor=eval_processor)
+        test_dataset = CocoCaptionDataset(split='test', max_length=config['max_length'], tokenizer=tokenizer, processor=processor, eval_processor=eval_processor)
         return train_dataset, val_dataset, test_dataset
     else:
         raise NotImplementedError

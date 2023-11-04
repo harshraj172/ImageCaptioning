@@ -17,7 +17,7 @@ class BaseModel(nn.Module):
         """            
         super().__init__()
         
-        self.visual_encoder = AutoModel.from_pretrained(vision_model_path)
+        self.visual_encoder = AutoModel.from_pretrained(vision_model_path, cache_dir="/p/scratch/ccstdl/raj3/imgcaption-data")
         self.ln_vision = nn.LayerNorm(self.visual_encoder.config.hidden_size)
         for name, param in self.visual_encoder.named_parameters():
             param.requires_grad = False
@@ -26,7 +26,7 @@ class BaseModel(nn.Module):
         lm_config = AutoConfig.from_pretrained(lm_path)
         lm_config.dense_act_fn = "gelu"
         self.lm_decoder = AutoModelForSeq2SeqLM.from_pretrained(
-            lm_path, config=lm_config
+            lm_path, config=lm_config, cache_dir="/p/scratch/ccstdl/raj3/imgcaption-data"
         )
         for name, param in self.lm_decoder.named_parameters():
             param.requires_grad = False

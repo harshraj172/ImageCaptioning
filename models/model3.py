@@ -5,12 +5,14 @@ Model with LLaVA like projection, CausalLM-LLama/Mistral
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from transformers import (AutoTokenizer, AutoConfig,
+from transformers import (AutoTokenizer, AutoConfig, CLIPConfig, CLIPVisionModel,
                           AutoModelForCausalLM, AutoModel)
 from .utils import SimpleResBlock
+from .modeling_llama import LlamaForCausalLM
 
 class Model3(nn.Module):
-    def __init__(self,                 
+    def __init__(self,             
+                config, 
                 vision_model_path='facebook/dinov2-small',
                 lm_path='t5-small',
                  ):
@@ -21,45 +23,48 @@ class Model3(nn.Module):
             vit (str): model size of vision transformer
         """            
         super().__init__()
-        
-        self.visual_encoder = AutoModel.from_pretrained(vision_model_path)
-        self.ln_vision = nn.LayerNorm(self.visual_encoder.config.hidden_size)
+        self.factor = int(256/config['max_length'])
+        if 'clip' in config['vision_model_path']:
+            self.visual_encoder = CLIPVisionModel.from_pretrained(vision_model_path, cache_dir="/p/scratch/ccstdl/raj3/imgcaption-data")
+        elif 'dino' in config['vision_model_path']:
+            self.visual_encoder = AutoModel.from_pretrained(vision_model_path, cache_dir="/p/scratch/ccstdl/raj3/imgcaption-data")
+        else:
+            NotImplementedError
+        img_hidden_size = self.visual_encoder.config.hidden_size
+        self.ln_vision = nn.LayerNorm(img_hidden_size * self.factor)
         print('FREEZING VISUAL ENCODER')
-        for name, param in self.visual_encoder.named_parameters():
-            param.requires_grad = False
-        self.visual_encoder.eval()
+        self.visual_encoder.requires_grad_(False)
 
-        self.lm_tokenizer = AutoTokenizer.from_pretrained(lm_path)
-        lm_config = AutoConfig.from_pretrained(lm_path)
+        self.lm_tokenizer = AutoTokenizer.from_pretrained(lm_path, cache_dir="/p/scratch/ccstdl/raj3/imgcaption-data")
+        lm_config = AutoConfig.from_pretrained(lm_path, cache_dir="/p/scratch/ccstdl/raj3/imgcaption-data")
         lm_config.dense_act_fn = "gelu"
-        self.lm_decoder = AutoModelForCausalLM.from_pretrained(
-            lm_path, config=lm_config
+        self.lm_decoder = LlamaForCausalLM.from_pretrained(
+            lm_path, config=lm_config, cache_dir="/p/scratch/ccstdl/raj3/imgcaption-data"
         )
         print('FREEZING LANGUAGE DECODER')
-        for name, param in self.lm_decoder.named_parameters():
-            param.requires_grad = False
-            param.data = param.data
-        self.lm_decoder.eval()
+        self.lm_decoder.requires_grad_(False)
         
-        mlp_depth = 3
-        modules = [nn.Linear(self.visual_encoder.config.hidden_size, self.lm_decoder.config.hidden_size)]
+        mlp_depth = 4
+        modules = [nn.Linear(img_hidden_size * self.factor, self.lm_decoder.config.hidden_size)]
         for _ in range(1, mlp_depth):
             modules.append(SimpleResBlock(self.lm_decoder.config.hidden_size))
         self.proj = nn.Sequential(*modules)
         
-        
     def forward(self, samples):
-        image_embeds = self.ln_vision(self.visual_encoder(samples['pixel_values']).last_hidden_state)
+        image_embeds = self.visual_encoder(samples['pixel_values']).last_hidden_state
+        image_embeds = image_embeds[:, 1:, :]
+        bs, pn, hs = image_embeds.shape
+        image_embeds = image_embeds.view(bs, int(pn / self.factor), int(hs * self.factor))
         image_embeds = F.dropout(image_embeds, p=0.1)
-        image_atts = torch.ones(image_embeds.size()[:-1], dtype=torch.long).to(image_embeds.device)
+        image_embeds = self.ln_vision(image_embeds)
         
         lm_inputs = self.proj(image_embeds)
         lm_atts = torch.ones(lm_inputs.size()[:-1], dtype=torch.long).to(image_embeds.device)
         
         targets = samples['input_ids'].masked_fill(samples['input_ids'] == self.lm_tokenizer.pad_token_id, -100)       
-        outputs = self.lm_decoder(inputs_embeds=lm_inputs, 
+        outputs = self.lm_decoder(inputs_embeds=lm_inputs,
                                     attention_mask=lm_atts, 
-                                    decoder_attention_mask=samples['attention_mask'],        
+                                    # decoder_attention_mask=samples['attention_mask'],        
                                     labels=targets,
                                     return_dict=True,   
                                     )  
@@ -68,8 +73,11 @@ class Model3(nn.Module):
     def generate(self, samples, sample=False, num_beams=3, max_length=30, min_length=10, top_p=0.9, 
                  temperature=0.7, num_captions=1, repetition_penalty=1.0, length_penalty=1.0):
         
-        image_embeds = self.ln_vision(self.visual_encoder(samples['pixel_values']).last_hidden_state)
-        image_atts = torch.ones(image_embeds.size()[:-1], dtype=torch.long).to(image_embeds.device)
+        image_embeds = self.visual_encoder(samples['pixel_values']).last_hidden_state
+        image_embeds = image_embeds[:, 1:, :]
+        bs, pn, hs = image_embeds.shape
+        image_embeds = image_embeds.view(bs, int(pn / self.factor), int(hs * self.factor))
+        image_embeds = self.ln_vision(image_embeds)
         
         lm_inputs = self.proj(image_embeds)
         lm_atts = torch.ones(lm_inputs.size()[:-1], dtype=torch.long).to(image_embeds.device)     

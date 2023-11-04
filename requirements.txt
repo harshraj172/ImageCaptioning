@@ -2,3 +2,6 @@ transformers==4.34.0
 datasets==2.14.5
 Pillow==9.2.0
 pycocoevalcap
+wandb==0.15.10
+open-clip-torch==2.23.0
+torch==2.0.1

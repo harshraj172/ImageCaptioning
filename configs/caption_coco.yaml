@@ -1,24 +1,27 @@
 # set pretrained as a file path or an url, vision model, text model
 pretrained: ''
 vision_model_path: 'facebook/dinov2-giant'
-lm_path: 't5-large'
+# vision_model_path: 'openai/clip-vit-large-patch14-336'
+lm_path: 'google/flan-t5-xl'
+# lm_path: 'NousResearch/Nous-Hermes-llama-2-7b'
+eval_model: 'hf-hub:timm/ViT-B-16-SigLIP'
 
 # logging
 wandb_team: 'harsh172'
 wandb_project: 'image-captioning'
 
-batch_size: 12
-init_lr: 0.0001
+batch_size: 8
+init_lr: 0.0002
 
 image_size: 384
 
 # generation configs
-max_length: 25  
-min_length: 5
+max_length: 32
+min_length: 8
 num_beams: 3
 prompt: ''
 
 # optimizer
 weight_decay: 0.05
 min_lr: 0
-max_epoch: 10
+max_epoch: 15
